@@ -1,0 +1,182 @@
+version: '3.8'
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: etcd
+    environment:
+      ETCD_NAME: etcd
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_ADVERTISE_CLIENT_URLS: http://etcd:2379
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: http://etcd:2380
+      ETCD_INITIAL_CLUSTER: etcd=http://etcd:2380
+      ETCD_INITIAL_CLUSTER_TOKEN: tkn
+      ETCD_INITIAL_CLUSTER_STATE: new
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd_data:/etcd
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: app_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  minio:
+    image: quay.io/minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  proxy:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-proxy
+    command: ["milvus", "run", "proxy"]
+    depends_on:
+      - etcd
+      - postgres
+      - minio
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET_NAME: milvus-bucket
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB_NAME: app_db
+
+  rootcoord:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-rootcoord
+    command: ["milvus", "run", "rootcoord"]
+    depends_on:
+      - proxy
+    environment: &milvus_env
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_BUCKET_NAME: milvus-bucket
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB_NAME: app_db
+
+  querycoord:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-querycoord
+    command: ["milvus", "run", "querycoord"]
+    depends_on:
+      - rootcoord
+    environment: *milvus_env
+
+  querynode:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-querynode
+    command: ["milvus", "run", "querynode"]
+    depends_on:
+      - querycoord
+    environment: *milvus_env
+    volumes:
+      - querynode_data:/var/lib/milvus
+
+  datacoord:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-datacoord
+    command: ["milvus", "run", "datacoord"]
+    depends_on:
+      - rootcoord
+    environment: *milvus_env
+
+  datanode:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-datanode
+    command: ["milvus", "run", "datanode"]
+    depends_on:
+      - datacoord
+    environment: *milvus_env
+    volumes:
+      - datanode_data:/var/lib/milvus
+
+  indexcoord:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-indexcoord
+    command: ["milvus", "run", "indexcoord"]
+    depends_on:
+      - rootcoord
+    environment: *milvus_env
+
+  indexnode:
+    image: milvusdb/milvus:v2.3.9
+    container_name: milvus-indexnode
+    command: ["milvus", "run", "indexnode"]
+    depends_on:
+      - indexcoord
+    environment: *milvus_env
+    volumes:
+      - indexnode_data:/var/lib/milvus
+
+  spark:
+    image: bitnami/spark:3.5
+    container_name: spark
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - spark_logs:/bitnami/spark/logs
+      - spark_data:/bitnami/spark/data
+      - spark_conf:/bitnami/spark/conf
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 6g
+    environment:
+      OLLAMA_HOST: 0.0.0.0
+    command: serve
+
+volumes:
+  pg_data:
+  minio_data:
+  etcd_data:
+  querynode_data:
+  datanode_data:
+  indexnode_data:
+  ollama_data:
+  spark_data:
+  spark_logs:
+  spark_conf:
+
