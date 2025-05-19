@@ -1,7 +1,7 @@
 
 # 📦 utils Directory
 
-This directory contains scripts used to **create database tables** and **test data ingestion and transformation pipelines** related to vegetation indexes and agronomic insights in the context of remote sensing data.
+This directory contains scripts used to **create database tables** and **test data ingestion and transformation pipelines**.
 
 ---
 
@@ -9,7 +9,7 @@ This directory contains scripts used to **create database tables** and **test da
 
 ### 🔧 `create/`
 
-Contains scripts for creating PostgreSQL tables programmatically using `psycopg2`. Each script corresponds to a specific vegetation index or insight type.
+Contains scripts for creating PostgreSQL tables programmatically using `psycopg2`.
 
 #### Scripts:
 - `create_gndvi.py` / `create_gndvi_insights.py`
