@@ -47,7 +47,7 @@ All containers will start in detached mode.
 Use with any PostgreSQL client:
 
 ```bash
-psql -h localhost -U admin -d app_db
+psql -h localhost -p 5433 -U admin postgres
 ```
 
 ---
