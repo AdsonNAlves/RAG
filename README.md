@@ -1,6 +1,7 @@
 # 🤖 Multimodal AI Infrastructure with Podman Compose + Gradio
 
-Este projeto define uma infraestrutura de IA multimodal baseada em contêineres usando **Podman Compose**. Ele integra componentes para ingestão, processamento e recuperação aumentada por geração (**RAG**) com interface via **Gradio**.
+Este projeto define uma infraestrutura de IA multimodal baseada em contêineres usando **Podman Compose**. Ele integra componentes para ingestão, processamento e recuperação aumentada por geração (**RAG**) com interface via **Gradio**. Tudo está isolado em containers via Podman Compose: postgres, milvus, minio, etcd, ollama, spark, e rag_app.
+O serviço rag_app é construído a partir de um Dockerfile e roda o script rag.py.
 
 ---
 
