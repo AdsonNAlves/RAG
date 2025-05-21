@@ -1,198 +1,208 @@
-# Multimodal AI Infrastructure with Podman Compose
+# 🤖 Multimodal AI Infrastructure with Podman Compose + Gradio
 
-Defines a development environment using Podman Compose to orchestrate the following services:
-
-- PostgreSQL (relational database)
-- Milvus (vector database)
-- MinIO (object storage, used by Milvus)
-- Apache Spark (distributed processing engine)
-- Ollama (lightweight LLM runtime supporting phi4-mini and other models)
-
-All services are containerized and connected via an internal network, with persistent volumes configured for data storage.
+Este projeto define uma infraestrutura de IA multimodal baseada em contêineres usando **Podman Compose**. Ele integra componentes para ingestão, processamento e recuperação aumentada por geração (**RAG**) com interface via **Gradio**.
 
 ---
 
-## 🚀 Getting Started
+## 📦 Serviços Incluídos
 
-### Prerequisites
+| Serviço      | Função                             | Porta (Host) | Volume Persistente      |
+|--------------|------------------------------------|--------------|--------------------------|
+| PostgreSQL   | Banco de dados relacional          | 5433         | `pg_data`                |
+| MinIO        | Armazenamento de objetos           | 9000/9001    | `minio_data`             |
+| Milvus       | Banco de dados vetorial            | 19530/9091   | `milvus_data`            |
+| Spark        | Processamento distribuído          | 8080/7077    | -                        |
+| Ollama       | Execução de LLMs como `phi4-mini`  | 11434        | `ollama_data`            |
+| RAG App      | Pipeline RAG com LLM + Gradio UI   | 7860         | Código local             |
 
-- Podman and podman-compose installed on your system
-- At least 8 GB RAM recommended
-- Internet connection to pull base images and download models
+---
 
-### Start All Services
+## 🚀 Primeiros Passos
 
-In the directory with your podman-compose.yaml file:
+### Pré-requisitos
+
+- [`podman`](https://podman.io/)
+- [`podman-compose`](https://github.com/containers/podman-compose)
+- Internet para baixar imagens e modelos
+
+### Subir ambiente:
 
 ```bash
-podman-compose -f podman-compose.yml up -d
+make up
 ```
 
-All containers will start in detached mode.
+> Isso inicia todos os serviços definidos em `podman-compose.yml`.
 
 ---
 
-## 🧱 Services Overview
+## 🧠 RAG Pipeline com Gradio
 
-### 1. PostgreSQL
+A aplicação principal (`rag.py`) executa o pipeline RAG completo:
 
-- 📦 Image: postgres:15
-- 🛠 Environment:
-  - User: admin
-  - Password: admin
-  - DB: app_db
-- 📂 Volume: pg_data → /var/lib/postgresql/data
-- 📡 Port: 5432
+- Pré-processamento com **Spark**
+- Embedding com **Ollama**
+- Indexação com **Milvus**
+- Consulta com recuperação vetorial
+- Interface com **Gradio**
 
-Use with any PostgreSQL client:
+Acesse a interface em:
 
 ```bash
-psql -h localhost -p 5433 -U admin postgres
+http://localhost:7860
+```
+
+### Comandos úteis
+
+```bash
+make logs      # Ver logs do rag-app
+make exec      # Entrar no container rag_app
+make restart   # Reiniciar ambiente
 ```
 
 ---
 
-### 2. MinIO
+## 🔍 Serviços Detalhados
 
-- 📦 Image: quay.io/minio/minio
-- 🛠 Credentials:
-  - Access Key: minioadmin
-  - Secret Key: minioadmin
-- 📂 Volume: minio_data → /data
-- 🌐 Console: http://localhost:9001
-- 📡 API: http://localhost:9000
+### PostgreSQL
 
-Default bucket used by Milvus: milvus-bucket
+- 📦 `postgres:15`
+- Usuário: `admin` • Senha: `admin` • Banco: `app_db`
+- Porta: `5433`
+- Volume: `pg_data`
+
+```bash
+psql -h localhost -p 5433 -U admin app_db
+```
 
 ---
 
-### 3. Milvus
+### MinIO
 
-- 📦 Image: milvusdb/milvus:v2.3.9
-- 🛠 Configured with external:
-  - etcd
-  - MinIO
-  - PostgreSQL
-- 📂 Volume: milvus_data → /var/lib/milvus
-- 📡 Ports:
-  - 19530 (gRPC)
-  - 9091 (HTTP)
+- 📦 `quay.io/minio/minio`
+- Acesso: `minioadmin:minioadmin`
+- Console: [http://localhost:9001](http://localhost:9001)
+- API: [http://localhost:9000](http://localhost:9000)
+- Bucket padrão: `milvus-bucket`
 
-You can use pymilvus to interact with it:
+---
+
+### Milvus
+
+- 📦 `milvusdb/milvus:v2.3.9`
+- Porta gRPC: `19530`
+- Porta HTTP: `9091`
+- Volume: `milvus_data`
 
 ```python
 from pymilvus import connections
-connections.connect(host='localhost', port='19530')
+connections.connect(host="localhost", port="19530")
 ```
 
 ---
 
-### 4. Apache Spark
+### Spark
 
-- 📦 Image: bitnami/spark:3.5
-- 📡 Ports:
-  - 8080 (Web UI)
-  - 7077 (Cluster port)
+- 📦 `bitnami/spark:3.5`
+- UI: [http://localhost:8080](http://localhost:8080)
 
-Configured as Spark master. Workers can be added later.
-
-Web UI: http://localhost:8080
+Usado para UDFs de chunking, embeddings e pré-processamento.
 
 ---
 
-### 5. Ollama with phi4-mini
+### Ollama
 
-- 📦 Image: ollama/ollama
-- 📂 Volume: ollama_data → /root/.ollama
-- 📡 Port: 11434
+- 📦 `ollama/ollama`
+- Porta: `11434`
+- Volume: `ollama_data`
 
-Start or run models inside the container:
+Executar modelo manualmente:
 
 ```bash
 podman exec -it ollama ollama run phi4-mini
 ```
 
-You can interact with Ollama via its HTTP API:
+Testar via API:
 
 ```bash
 curl -s http://localhost:11434/api/generate \
-  -d '{
-    "model": "phi4-mini",
-    "prompt": "Qual o seu propósito?"
-  }' \
-  | jq -r 'select(.response) | .response' | tr -d '\n'; echo
-```
-
-ℹ️ If phi4-mini is not yet officially available, use phi3 or llama3 instead:
-
-```bash
-ollama run phi3
+  -d '{"model":"phi4-mini","prompt":"Qual o seu propósito?"}' \
+  | jq -r '.response'
 ```
 
 ---
 
-## 💾 Data Persistence
+## 📁 Makefile
 
-Each service uses a Podman volume for persistence:
+```makefile
+.PHONY: up down logs exec restart dev prod
 
-| Service    | Volume Name   | Path Inside Container              |
-|------------|---------------|------------------------------------|
-| PostgreSQL | pg_data       | /var/lib/postgresql/data           |
-| Milvus     | milvus_data   | /var/lib/milvus                    |
-| MinIO      | minio_data    | /data                              |
-| Ollama     | ollama_data   | /root/.ollama                      |
+up:           # Subir ambiente dev
+	podman-compose -f podman-compose.yml up -d --build
 
-You can inspect volumes via:
+down:         # Parar serviços dev
+	podman-compose -f podman-compose.yml down
 
-```bash
-podman volume ls
-podman volume inspect <volume_name>
+logs:         # Logs do rag-app
+	podman-compose -f podman-compose.yml logs -f rag-app
+
+exec:         # Acessar container rag_app
+	podman exec -it rag_app bash
+
+restart:      # Reiniciar ambiente
+	make down && make up
+
+dev:          # Alias para make up
+	make up
+
+prod:         # Futuro ambiente prod
+	podman-compose -f podma-prod.yml up -d --build
 ```
 
 ---
 
-## 🧹 Shut Down and Cleanup
+## 💾 Volumes
 
-To stop all services:
-
-```bash
-podman-compose -f podman-compose.yml down
-```
-
-To remove all volumes (careful!):
-
-```bash
-podman volume rm pg_data milvus_data minio_data ollama_data
-```
-
-## Architecture Diagram
-```
-                  ┌────────────┐
-                  │ PostgreSQL │
-                  └─────┬──────┘
-                        │
-                  ┌─────▼──────┐
-                  │   MinIO    │
-                  └─────┬──────┘
-                        │
-                  ┌─────▼────────────┐
-                  │     Spark        │ ◄────────────┐
-                  │  - Leitura       │              │
-                  │  - Limpeza       │              │
-                  │  - Chunking      │              │
-                  │  - Embedding UDF │              │
-                  └─────┬────────────┘              │
-                        │                           │
-                  ┌─────▼────────────┐              │
-                  │     Milvus       │ ◄────────────┘
-                  └──────────────────┘
-```
-Can be automated via Airflow or REST scripts.
+| Serviço     | Volume        | Caminho no container           |
+|-------------|---------------|--------------------------------|
+| PostgreSQL  | `pg_data`     | `/var/lib/postgresql/data`    |
+| MinIO       | `minio_data`  | `/data`                       |
+| Milvus      | `milvus_data` | `/var/lib/milvus`             |
+| Ollama      | `ollama_data` | `/root/.ollama`               |
 
 ---
 
-<!-- ## 🧠 Next Steps
+## 🧠 Arquitetura
 
-- Add Spark workers and job submission support
-- Connect your LLM-based module to Milvus and PostgreSQL
-- Build custom REST or WebSocket APIs for inference and vector search -->
+```
+                   ┌────────────┐
+                   │ PostgreSQL │
+                   └─────┬──────┘
+                         │
+                   ┌─────▼──────┐
+                   │   MinIO    │
+                   └─────┬──────┘
+                         │
+                   ┌─────▼────────────┐
+                   │     Spark        │ ◄────────────┐
+                   │  - Limpeza       │              │
+                   │  - Chunking      │              │
+                   │  - Embedding UDF │              │
+                   └─────┬────────────┘              │
+                         │                           │
+                   ┌─────▼────────────┐              │
+                   │     Milvus       │ ◄────────────┘
+                   └─────┬────────────┘
+                         │
+                   ┌─────▼────────────┐
+                   │     Ollama       │ ◄── Gradio UI
+                   └──────────────────┘
+```
+
+---
+
+## ✅ Próximos Passos
+
+- [ ] Versão de produção com `podma-prod.yml`
+- [ ] Adicionar workers Spark (escala horizontal)
+- [ ] API REST ou GraphQL para queries
+- [ ] Monitoramento com Grafana + Prometheus
