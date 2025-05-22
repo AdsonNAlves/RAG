@@ -84,13 +84,6 @@ def insert_into_milvus(chunks):
     print("Dados inseridos no Milvus com sucesso.")
     return vectorstore
 
-# # Gradio: função de chat (placeholder)
-# def chat(question,history):
-#     print("Ainda estou aprendendo com os dados da RAG... 🚀")
-#     result = conversation_chain.invoke({"question": question})
-#     return result["answer"]
-
-
 def chat(question, history):
     print("Pergunta recebida:", question)
 
