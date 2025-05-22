@@ -12,6 +12,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from langchain_ollama import ChatOllama
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 import gradio as gr
 
@@ -66,7 +67,7 @@ def load_markdown_documents():
 
 # Dividir os documentos em chunks
 def split_documents(documents):
-    splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=200, separators=["\n\n","\n","."," ", ""])
     return splitter.split_documents(documents)
 
 milvus_host = os.getenv("MILVUS_HOST", "milvus")
@@ -83,12 +84,26 @@ def insert_into_milvus(chunks):
     print("Dados inseridos no Milvus com sucesso.")
     return vectorstore
 
-# Gradio: função de chat (placeholder)
-def chat(question,history):
-    print("Ainda estou aprendendo com os dados da RAG... 🚀")
-    result = conversation_chain.invoke({"question": question})
-    return result["answer"]
+# # Gradio: função de chat (placeholder)
+# def chat(question,history):
+#     print("Ainda estou aprendendo com os dados da RAG... 🚀")
+#     result = conversation_chain.invoke({"question": question})
+#     return result["answer"]
 
+
+def chat(question, history):
+    print("Pergunta recebida:", question)
+
+    # Invoca a cadeia de conversação com retorno de fontes
+    result = conversation_chain.invoke({"question": question})
+    
+    # Verifica se há documentos de origem retornados
+    source_docs = result.get("source_documents", [])
+    
+    if not source_docs:
+        return "Não sei. Isso não consta nos dados da Prediza."
+
+    return result["answer"]
 
 if __name__ == "__main__":
     print("Iniciando pipeline RAG...")
@@ -107,7 +122,7 @@ if __name__ == "__main__":
     
 
     # Mensagens de sistema
-    system_message = "Você é especialista em responder perguntas precisas sobre a empresa Prediza. Seja breve e preciso. Se não souber a resposta, diga. Não invente nada se não tiver recebido contexto relevante."
+    system_message = "Você é especialista em responder perguntas precisas sobre a empresa Prediza. Seja breve e preciso. Se não souber a resposta, diga. Não invente nada se não tiver recebido contexto relevante.Você deve usar apenas os documentos fornecidos para responder. Se não encontrar nada nos documentos, responda: Não sei. Isso não consta nos dados da Prediza."
     idioma = "Sempre responda no idioma Português, Brasil."
 
     # Cria um prompt customizado com o system_message + idioma
@@ -117,17 +132,18 @@ if __name__ == "__main__":
     chat_prompt = ChatPromptTemplate.from_messages([system_msg_prompt, human_msg_prompt])
 
 
-    llm = ChatOllama(temperature=0.7, model="phi4-mini", base_url=ollama_base_url, prompt=chat_prompt)
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    llm = ChatOllama(temperature=0.2, model="phi4-mini", base_url=ollama_base_url, prompt=chat_prompt)
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True,output_key="answer")
     retriever = vectorstore.as_retriever()
-    conversation_chain = ConversationalRetrievalChain.from_llm(llm=llm, retriever=retriever, memory=memory)
+    #retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 5})
+    conversation_chain = ConversationalRetrievalChain.from_llm(llm=llm, retriever=retriever, memory=memory,return_source_documents=True)
 
     print("Pipeline RAG finalizado. Iniciando Gradio...")
 
     # Interface Gradio
     view = gr.ChatInterface(
         fn=chat,
-        chatbot=gr.Chatbot(height=400),
+        chatbot=gr.Chatbot(height=400, type="messages"),
         title="RAG Assistant - Prediza",
         theme="soft",
         description="Faça perguntas sobre insights e dados Prediza.",
